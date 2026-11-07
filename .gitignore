@@ -1,0 +1,13 @@
+# Dependencies
+node_modules/
+
+# Newman reports (generated on every run)
+Reports/
+
+# Local configuration / secrets
+.env
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.log

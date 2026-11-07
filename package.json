@@ -1,0 +1,16 @@
+{
+  "name": "dmoney-api-postman-tests",
+  "version": "1.0.0",
+  "description": "Postman collection + Newman runner for the DMoney end-to-end money flow",
+  "private": true,
+  "scripts": {
+    "test": "node scripts/run-newman.js",
+    "docs": "node scripts/generate-docs.js"
+  },
+  "license": "ISC",
+  "devDependencies": {
+    "dotenv": "^18.0.9",
+    "newman": "^6.2.3",
+    "newman-reporter-htmlextra": "^1.23.1"
+  }
+}

@@ -1,0 +1,3497 @@
+{
+  "info": {
+    "name": "DMoney - End-to-End Money Flow",
+    "description": "End-to-end API tests for the DMoney transaction API: register & activate users, SYSTEM top-up of an agent, agent deposit, send money, cash-out and merchant payment — every step has positive and negative test cases, with fee/commission assertions.\n\n30 test cases (one request + one `pm.test` each, several assertions per test). Run the folders in order; each run generates fresh users.\n\nBusiness rules: dmoney-web-react/README.md (BRD §7–§9). Swagger: {{base_url}}/api-docs/user and {{base_url}}/api-docs/transaction.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Register users",
+      "description": "Creates 2 customers, 1 agent and 1 merchant through the public registration API (positive), plus two negative registration cases.",
+      "item": [
+        {
+          "name": "TC01 - Register Customer 1",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Fresh data on every run so the flow can be repeated against the same database.",
+                  "const run = Date.now().toString().slice(-8);",
+                  "const digits = (n) => Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join('');",
+                  "['c1', 'c2', 'agent', 'merchant', 'neg'].forEach((k) => {",
+                  "  pm.collectionVariables.set(k + '_email', 'sdet.' + k + '.' + run + digits(2) + '@gmail.com');",
+                  "  pm.collectionVariables.set(k + '_phone', '01' + digits(9));          // exactly 11 characters",
+                  "  pm.collectionVariables.set(k + '_nid', digits(10));                  // 7-13 characters",
+                  "});",
+                  "pm.collectionVariables.set('run_id', run);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = () => pm.response.json();",
+                  "const fast = () => pm.expect(pm.response.responseTime, 'response time (ms)').to.be.below(3000);",
+                  "const isJson = () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+                  "",
+                  "pm.test(\"TC01 - Register Customer 1\", () => {",
+                  "  pm.response.to.have.status(201);",
+                  "  isJson(); fast();",
+                  "  const b = json();",
+                  "  pm.collectionVariables.set('c1_id', b.user.id);",
+                  "  pm.expect(b.message).to.include('Registration successful');",
+                  "  pm.expect(b.user.id).to.be.a('number');",
+                  "  pm.expect(b.user.email).to.eql(pm.collectionVariables.get('c1_email'));",
+                  "  pm.expect(b.user.phone_number).to.eql(pm.collectionVariables.get('c1_phone'));",
+                  "  pm.expect(b.user.role).to.eql('Customer');",
+                  "  pm.expect(b.user.status, 'new accounts start as pending').to.eql('pending');",
+                  "  pm.expect(b.user, 'password must never be echoed').to.not.have.property('password');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/user/register",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "user",
+                "register"
+              ]
+            },
+            "description": "Public self-registration (no token). Creates a **Customer** with status `pending` — it cannot transact until an Admin activates it (folder 2).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"SDET Customer 1\",\n  \"email\": \"{{c1_email}}\",\n  \"password\": \"{{user_password}}\",\n  \"phone_number\": \"{{c1_phone}}\",\n  \"nid\": \"{{c1_nid}}\",\n  \"role\": \"Customer\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "201 Created",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/user/register",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "user",
+                    "register"
+                  ]
+                },
+                "description": "Public self-registration (no token). Creates a **Customer** with status `pending` — it cannot transact until an Admin activates it (folder 2).",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"SDET Customer 1\",\n  \"email\": \"{{c1_email}}\",\n  \"password\": \"{{user_password}}\",\n  \"phone_number\": \"{{c1_phone}}\",\n  \"nid\": \"{{c1_nid}}\",\n  \"role\": \"Customer\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Created",
+              "code": 201,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"message\": \"Registration successful. Your account is pending approval by an admin.\",\n  \"user\": {\n    \"id\": 77,\n    \"name\": \"SDET Customer 1\",\n    \"email\": \"sdet.c1.3615900971@gmail.com\",\n    \"phone_number\": \"01373247707\",\n    \"role\": \"Customer\",\n    \"status\": \"pending\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "TC02 - Register Customer 2",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = () => pm.response.json();",
+                  "const fast = () => pm.expect(pm.response.responseTime, 'response time (ms)').to.be.below(3000);",
+                  "const isJson = () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+                  "",
+                  "pm.test(\"TC02 - Register Customer 2\", () => {",
+                  "  pm.response.to.have.status(201);",
+                  "  isJson(); fast();",
+                  "  const b = json();",
+                  "  pm.collectionVariables.set('c2_id', b.user.id);",
+                  "  pm.expect(b.message).to.include('Registration successful');",
+                  "  pm.expect(b.user.id).to.be.a('number');",
+                  "  pm.expect(b.user.email).to.eql(pm.collectionVariables.get('c2_email'));",
+                  "  pm.expect(b.user.phone_number).to.eql(pm.collectionVariables.get('c2_phone'));",
+                  "  pm.expect(b.user.role).to.eql('Customer');",
+                  "  pm.expect(b.user.status, 'new accounts start as pending').to.eql('pending');",
+                  "  pm.expect(b.user, 'password must never be echoed').to.not.have.property('password');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/user/register",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "user",
+                "register"
+              ]
+            },
+            "description": "Public self-registration (no token). Creates a **Customer** with status `pending` — it cannot transact until an Admin activates it (folder 2).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"SDET Customer 2\",\n  \"email\": \"{{c2_email}}\",\n  \"password\": \"{{user_password}}\",\n  \"phone_number\": \"{{c2_phone}}\",\n  \"nid\": \"{{c2_nid}}\",\n  \"role\": \"Customer\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "201 Created",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/user/register",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "user",
+                    "register"
+                  ]
+                },
+                "description": "Public self-registration (no token). Creates a **Customer** with status `pending` — it cannot transact until an Admin activates it (folder 2).",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"SDET Customer 2\",\n  \"email\": \"{{c2_email}}\",\n  \"password\": \"{{user_password}}\",\n  \"phone_number\": \"{{c2_phone}}\",\n  \"nid\": \"{{c2_nid}}\",\n  \"role\": \"Customer\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Created",
+              "code": 201,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"message\": \"Registration successful. Your account is pending approval by an admin.\",\n  \"user\": {\n    \"id\": 78,\n    \"name\": \"SDET Customer 2\",\n    \"email\": \"sdet.c2.3615900933@gmail.com\",\n    \"phone_number\": \"01114997698\",\n    \"role\": \"Customer\",\n    \"status\": \"pending\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "TC03 - Register Agent",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = () => pm.response.json();",
+                  "const fast = () => pm.expect(pm.response.responseTime, 'response time (ms)').to.be.below(3000);",
+                  "const isJson = () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+                  "",
+                  "pm.test(\"TC03 - Register Agent\", () => {",
+                  "  pm.response.to.have.status(201);",
+                  "  isJson(); fast();",
+                  "  const b = json();",
+                  "  pm.collectionVariables.set('agent_id', b.user.id);",
+                  "  pm.expect(b.message).to.include('Registration successful');",
+                  "  pm.expect(b.user.id).to.be.a('number');",
+                  "  pm.expect(b.user.email).to.eql(pm.collectionVariables.get('agent_email'));",
+                  "  pm.expect(b.user.phone_number).to.eql(pm.collectionVariables.get('agent_phone'));",
+                  "  pm.expect(b.user.role).to.eql('Agent');",
+                  "  pm.expect(b.user.status, 'new accounts start as pending').to.eql('pending');",
+                  "  pm.expect(b.user, 'password must never be echoed').to.not.have.property('password');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/user/register",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "user",
+                "register"
+              ]
+            },
+            "description": "Public self-registration (no token). Creates a **Agent** with status `pending` — it cannot transact until an Admin activates it (folder 2).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"SDET Agent\",\n  \"email\": \"{{agent_email}}\",\n  \"password\": \"{{user_password}}\",\n  \"phone_number\": \"{{agent_phone}}\",\n  \"nid\": \"{{agent_nid}}\",\n  \"role\": \"Agent\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "201 Created",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/user/register",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "user",
+                    "register"
+                  ]
+                },
+                "description": "Public self-registration (no token). Creates a **Agent** with status `pending` — it cannot transact until an Admin activates it (folder 2).",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"SDET Agent\",\n  \"email\": \"{{agent_email}}\",\n  \"password\": \"{{user_password}}\",\n  \"phone_number\": \"{{agent_phone}}\",\n  \"nid\": \"{{agent_nid}}\",\n  \"role\": \"Agent\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Created",
+              "code": 201,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"message\": \"Registration successful. Your account is pending approval by an admin.\",\n  \"user\": {\n    \"id\": 79,\n    \"name\": \"SDET Agent\",\n    \"email\": \"sdet.agent.3615900965@gmail.com\",\n    \"phone_number\": \"01800291177\",\n    \"role\": \"Agent\",\n    \"status\": \"pending\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "TC04 - Register Merchant",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = () => pm.response.json();",
+                  "const fast = () => pm.expect(pm.response.responseTime, 'response time (ms)').to.be.below(3000);",
+                  "const isJson = () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+                  "",
+                  "pm.test(\"TC04 - Register Merchant\", () => {",
+                  "  pm.response.to.have.status(201);",
+                  "  isJson(); fast();",
+                  "  const b = json();",
+                  "  pm.collectionVariables.set('merchant_id', b.user.id);",
+                  "  pm.expect(b.message).to.include('Registration successful');",
+                  "  pm.expect(b.user.id).to.be.a('number');",
+                  "  pm.expect(b.user.email).to.eql(pm.collectionVariables.get('merchant_email'));",
+                  "  pm.expect(b.user.phone_number).to.eql(pm.collectionVariables.get('merchant_phone'));",
+                  "  pm.expect(b.user.role).to.eql('Merchant');",
+                  "  pm.expect(b.user.status, 'new accounts start as pending').to.eql('pending');",
+                  "  pm.expect(b.user, 'password must never be echoed').to.not.have.property('password');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/user/register",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "user",
+                "register"
+              ]
+            },
+            "description": "Public self-registration (no token). Creates a **Merchant** with status `pending` — it cannot transact until an Admin activates it (folder 2).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"SDET Merchant\",\n  \"email\": \"{{merchant_email}}\",\n  \"password\": \"{{user_password}}\",\n  \"phone_number\": \"{{merchant_phone}}\",\n  \"nid\": \"{{merchant_nid}}\",\n  \"role\": \"Merchant\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "201 Created",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/user/register",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "user",
+                    "register"
+                  ]
+                },
+                "description": "Public self-registration (no token). Creates a **Merchant** with status `pending` — it cannot transact until an Admin activates it (folder 2).",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"SDET Merchant\",\n  \"email\": \"{{merchant_email}}\",\n  \"password\": \"{{user_password}}\",\n  \"phone_number\": \"{{merchant_phone}}\",\n  \"nid\": \"{{merchant_nid}}\",\n  \"role\": \"Merchant\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Created",
+              "code": 201,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"message\": \"Registration successful. Your account is pending approval by an admin.\",\n  \"user\": {\n    \"id\": 80,\n    \"name\": \"SDET Merchant\",\n    \"email\": \"sdet.merchant.3615900946@gmail.com\",\n    \"phone_number\": \"01733718020\",\n    \"role\": \"Merchant\",\n    \"status\": \"pending\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "TC05 - Register with a non-Gmail address is rejected (negative)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = () => pm.response.json();",
+                  "const fast = () => pm.expect(pm.response.responseTime, 'response time (ms)').to.be.below(3000);",
+                  "const isJson = () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+                  "",
+                  "pm.test(\"TC05 - Register with a non-Gmail address is rejected (negative)\", () => {",
+                  "  pm.response.to.have.status(400);",
+                  "  isJson(); fast();",
+                  "  pm.expect(json().message).to.include('Gmail');",
+                  "  pm.expect(json()).to.not.have.property('user');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/user/register",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "user",
+                "register"
+              ]
+            },
+            "description": "Only `@gmail.com` addresses are accepted. Expected: **400** with a Gmail-specific message and no user created.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"SDET Invalid Mail\",\n  \"email\": \"sdet.invalid.{{run_id}}@yahoo.com\",\n  \"password\": \"{{user_password}}\",\n  \"phone_number\": \"{{neg_phone}}\",\n  \"nid\": \"{{neg_nid}}\",\n  \"role\": \"Customer\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "400 Bad Request",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/user/register",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "user",
+                    "register"
+                  ]
+                },
+                "description": "Only `@gmail.com` addresses are accepted. Expected: **400** with a Gmail-specific message and no user created.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"SDET Invalid Mail\",\n  \"email\": \"sdet.invalid.{{run_id}}@yahoo.com\",\n  \"password\": \"{{user_password}}\",\n  \"phone_number\": \"{{neg_phone}}\",\n  \"nid\": \"{{neg_nid}}\",\n  \"role\": \"Customer\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"message\": \"Only Gmail addresses (@gmail.com) are accepted for registration.\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "TC06 - Register with an already used email returns 208 (negative)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = () => pm.response.json();",
+                  "const fast = () => pm.expect(pm.response.responseTime, 'response time (ms)').to.be.below(3000);",
+                  "const isJson = () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+                  "",
+                  "pm.test(\"TC06 - Register with an already used email returns 208 (negative)\", () => {",
+                  "  pm.response.to.have.status(208);",
+                  "  isJson(); fast();",
+                  "  pm.expect(json().message).to.eql('An account with this email already exists');",
+                  "  pm.expect(json()).to.not.have.property('user');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/user/register",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "user",
+                "register"
+              ]
+            },
+            "description": "Duplicate email is a business-rule soft failure: **208** `An account with this email already exists`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"SDET Duplicate\",\n  \"email\": \"{{c1_email}}\",\n  \"password\": \"{{user_password}}\",\n  \"phone_number\": \"{{neg_phone}}\",\n  \"nid\": \"{{neg_nid}}\",\n  \"role\": \"Customer\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "208 Already Reported",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/user/register",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "user",
+                    "register"
+                  ]
+                },
+                "description": "Duplicate email is a business-rule soft failure: **208** `An account with this email already exists`.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"SDET Duplicate\",\n  \"email\": \"{{c1_email}}\",\n  \"password\": \"{{user_password}}\",\n  \"phone_number\": \"{{neg_phone}}\",\n  \"nid\": \"{{neg_nid}}\",\n  \"role\": \"Customer\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Already Reported",
+              "code": 208,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"message\": \"An account with this email already exists\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Admin activates users",
+      "description": "Logs in as Admin (no OTP for Admin/SYSTEM) and activates the four new accounts (positive), plus activation of an unknown user (negative).",
+      "item": [
+        {
+          "name": "TC07 - Admin login returns a JWT",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = () => pm.response.json();",
+                  "const fast = () => pm.expect(pm.response.responseTime, 'response time (ms)').to.be.below(3000);",
+                  "const isJson = () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+                  "",
+                  "pm.test(\"TC07 - Admin login returns a JWT\", () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  isJson(); fast();",
+                  "  const b = json();",
+                  "  pm.collectionVariables.set('admin_token', b.token);",
+                  "  pm.expect(b.message).to.eql('Login successful');",
+                  "  pm.expect(b.role).to.eql('Admin');",
+                  "  pm.expect(b.token).to.be.a('string').and.match(/^[\\w-]+\\.[\\w-]+\\.[\\w-]+$/);",
+                  "  pm.expect(b).to.not.have.property('otpRequired');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/user/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "user",
+                "login"
+              ]
+            },
+            "description": "Admin and SYSTEM accounts skip OTP — the token is returned immediately. Stored as `admin_token`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{admin_email}}\",\n  \"password\": \"{{admin_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/user/login",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "user",
+                    "login"
+                  ]
+                },
+                "description": "Admin and SYSTEM accounts skip OTP — the token is returned immediately. Stored as `admin_token`.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"{{admin_email}}\",\n  \"password\": \"{{admin_password}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"message\": \"Login successful\",\n  \"token\": \"<jwt>\",\n  \"role\": \"Admin\",\n  \"expiresIn\": \"1h\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "TC08 - Admin activates Customer 1",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = () => pm.response.json();",
+                  "const fast = () => pm.expect(pm.response.responseTime, 'response time (ms)').to.be.below(3000);",
+                  "const isJson = () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+                  "",
+                  "pm.test(\"TC08 - Admin activates Customer 1\", () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  isJson(); fast();",
+                  "  pm.expect(json().message).to.eql('User updated successfully');",
+                  "  pm.expect(json().user.status).to.eql('active');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{partner_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/user/update/{{c1_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "user",
+                "update",
+                "{{c1_id}}"
+              ]
+            },
+            "description": "Admin-only `PATCH /user/update/:id` with `{ \"status\": \"active\" }` for the Customer 1 registered in folder 1.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"active\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{admin_token}}"
+                  },
+                  {
+                    "key": "X-AUTH-SECRET-KEY",
+                    "value": "{{partner_key}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/user/update/{{c1_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "user",
+                    "update",
+                    "{{c1_id}}"
+                  ]
+                },
+                "description": "Admin-only `PATCH /user/update/:id` with `{ \"status\": \"active\" }` for the Customer 1 registered in folder 1.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"status\": \"active\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"message\": \"User updated successfully\",\n  \"user\": {\n    \"status\": \"active\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "TC09 - Admin activates Customer 2",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = () => pm.response.json();",
+                  "const fast = () => pm.expect(pm.response.responseTime, 'response time (ms)').to.be.below(3000);",
+                  "const isJson = () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+                  "",
+                  "pm.test(\"TC09 - Admin activates Customer 2\", () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  isJson(); fast();",
+                  "  pm.expect(json().message).to.eql('User updated successfully');",
+                  "  pm.expect(json().user.status).to.eql('active');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{partner_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/user/update/{{c2_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "user",
+                "update",
+                "{{c2_id}}"
+              ]
+            },
+            "description": "Admin-only `PATCH /user/update/:id` with `{ \"status\": \"active\" }` for the Customer 2 registered in folder 1.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"active\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{admin_token}}"
+                  },
+                  {
+                    "key": "X-AUTH-SECRET-KEY",
+                    "value": "{{partner_key}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/user/update/{{c2_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "user",
+                    "update",
+                    "{{c2_id}}"
+                  ]
+                },
+                "description": "Admin-only `PATCH /user/update/:id` with `{ \"status\": \"active\" }` for the Customer 2 registered in folder 1.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"status\": \"active\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"message\": \"User updated successfully\",\n  \"user\": {\n    \"status\": \"active\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "TC10 - Admin activates Agent",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = () => pm.response.json();",
+                  "const fast = () => pm.expect(pm.response.responseTime, 'response time (ms)').to.be.below(3000);",
+                  "const isJson = () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+                  "",
+                  "pm.test(\"TC10 - Admin activates Agent\", () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  isJson(); fast();",
+                  "  pm.expect(json().message).to.eql('User updated successfully');",
+                  "  pm.expect(json().user.status).to.eql('active');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{partner_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/user/update/{{agent_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "user",
+                "update",
+                "{{agent_id}}"
+              ]
+            },
+            "description": "Admin-only `PATCH /user/update/:id` with `{ \"status\": \"active\" }` for the Agent registered in folder 1.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"active\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{admin_token}}"
+                  },
+                  {
+                    "key": "X-AUTH-SECRET-KEY",
+                    "value": "{{partner_key}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/user/update/{{agent_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "user",
+                    "update",
+                    "{{agent_id}}"
+                  ]
+                },
+                "description": "Admin-only `PATCH /user/update/:id` with `{ \"status\": \"active\" }` for the Agent registered in folder 1.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"status\": \"active\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"message\": \"User updated successfully\",\n  \"user\": {\n    \"status\": \"active\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "TC11 - Admin activates Merchant",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = () => pm.response.json();",
+                  "const fast = () => pm.expect(pm.response.responseTime, 'response time (ms)').to.be.below(3000);",
+                  "const isJson = () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+                  "",
+                  "pm.test(\"TC11 - Admin activates Merchant\", () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  isJson(); fast();",
+                  "  pm.expect(json().message).to.eql('User updated successfully');",
+                  "  pm.expect(json().user.status).to.eql('active');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{partner_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/user/update/{{merchant_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "user",
+                "update",
+                "{{merchant_id}}"
+              ]
+            },
+            "description": "Admin-only `PATCH /user/update/:id` with `{ \"status\": \"active\" }` for the Merchant registered in folder 1.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"active\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{admin_token}}"
+                  },
+                  {
+                    "key": "X-AUTH-SECRET-KEY",
+                    "value": "{{partner_key}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/user/update/{{merchant_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "user",
+                    "update",
+                    "{{merchant_id}}"
+                  ]
+                },
+                "description": "Admin-only `PATCH /user/update/:id` with `{ \"status\": \"active\" }` for the Merchant registered in folder 1.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"status\": \"active\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"message\": \"User updated successfully\",\n  \"user\": {\n    \"status\": \"active\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "TC12 - Admin activating a non-existent user returns 404 (negative)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = () => pm.response.json();",
+                  "const fast = () => pm.expect(pm.response.responseTime, 'response time (ms)').to.be.below(3000);",
+                  "const isJson = () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+                  "",
+                  "pm.test(\"TC12 - Admin activating a non-existent user returns 404 (negative)\", () => {",
+                  "  pm.response.to.have.status(404);",
+                  "  isJson(); fast();",
+                  "  pm.expect(json().message).to.eql('User not found');",
+                  "  pm.expect(json()).to.not.have.property('user');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{partner_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/user/update/999999999",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "user",
+                "update",
+                "999999999"
+              ]
+            },
+            "description": "Activation of a user id that does not exist. Expected **404** `User not found`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"active\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "404 Not Found",
+              "originalRequest": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{admin_token}}"
+                  },
+                  {
+                    "key": "X-AUTH-SECRET-KEY",
+                    "value": "{{partner_key}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/user/update/999999999",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "user",
+                    "update",
+                    "999999999"
+                  ]
+                },
+                "description": "Activation of a user id that does not exist. Expected **404** `User not found`.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"status\": \"active\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"message\": \"User not found\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Login",
+      "description": "SYSTEM login (no OTP) and the two-step OTP login for Agent, Customer 1 and Customer 2 (all positive; the negative cases live next to the transaction they protect).",
+      "item": [
+        {
+          "name": "TC13 - SYSTEM account login returns a JWT",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = () => pm.response.json();",
+                  "const fast = () => pm.expect(pm.response.responseTime, 'response time (ms)').to.be.below(3000);",
+                  "const isJson = () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+                  "",
+                  "pm.test(\"TC13 - SYSTEM account login returns a JWT\", () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  isJson(); fast();",
+                  "  const b = json();",
+                  "  pm.collectionVariables.set('system_token', b.token);",
+                  "  pm.expect(b.message).to.eql('Login successful');",
+                  "  pm.expect(b.token).to.be.a('string').and.not.empty;",
+                  "  pm.expect(b).to.not.have.property('otpRequired');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/user/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "user",
+                "login"
+              ]
+            },
+            "description": "SYSTEM (`system@dmoney.com`) skips OTP. Stored as `system_token`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{system_email}}\",\n  \"password\": \"{{system_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/user/login",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "user",
+                    "login"
+                  ]
+                },
+                "description": "SYSTEM (`system@dmoney.com`) skips OTP. Stored as `system_token`.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"{{system_email}}\",\n  \"password\": \"{{system_password}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"message\": \"Login successful\",\n  \"token\": \"<jwt>\",\n  \"role\": \"Agent\",\n  \"expiresIn\": \"1h\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "TC14 - Agent login (password + OTP) returns a JWT",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = () => pm.response.json();",
+                  "const fast = () => pm.expect(pm.response.responseTime, 'response time (ms)').to.be.below(3000);",
+                  "const isJson = () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+                  "",
+                  "const base = pm.variables.get('base_url');",
+                  "const partnerKey = pm.variables.get('partner_key');",
+                  "pm.sendRequest({",
+                  "  url: base + '/user/verify-otp?env=dev',",
+                  "  method: 'POST',",
+                  "  header: { 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify({ identifier: pm.collectionVariables.get('agent_email'), otp: pm.variables.get('default_otp') }) },",
+                  "}, (err, res) => {",
+                  "  pm.test(\"TC14 - Agent login (password + OTP) returns a JWT\", () => {",
+                  "    pm.expect(err, 'follow-up request error').to.be.null;",
+                  "    // step 1 - password accepted, OTP required, no token yet",
+                  "    pm.response.to.have.status(200);",
+                  "    isJson(); fast();",
+                  "    pm.expect(json().otpRequired).to.eql(true);",
+                  "    pm.expect(json().message).to.include('OTP');",
+                  "    pm.expect(json(), 'no token before OTP is verified').to.not.have.property('token');",
+                  "    // step 2 - OTP exchanged for a JWT",
+                  "    pm.expect(res.code).to.eql(200);",
+                  "    const v = res.json();",
+                  "    pm.collectionVariables.set('agent_token', v.token);",
+                  "    pm.expect(v.message).to.eql('Login successful');",
+                  "    pm.expect(v.role).to.eql('Agent');",
+                  "    pm.expect(v.token).to.be.a('string').and.match(/^[\\w-]+\\.[\\w-]+\\.[\\w-]+$/);",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/user/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "user",
+                "login"
+              ]
+            },
+            "description": "Two-step login in one test case. **Step 1** `POST /user/login` must answer `otpRequired: true` with no token. **Step 2** the script calls `POST /user/verify-otp?env=dev` with `default_otp` (the API's dev-only bypass; the real OTP is only emailed/logged) and must receive a JWT. Stored as `agent_token`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{agent_email}}\",\n  \"password\": \"{{user_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/user/login",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "user",
+                    "login"
+                  ]
+                },
+                "description": "Two-step login in one test case. **Step 1** `POST /user/login` must answer `otpRequired: true` with no token. **Step 2** the script calls `POST /user/verify-otp?env=dev` with `default_otp` (the API's dev-only bypass; the real OTP is only emailed/logged) and must receive a JWT. Stored as `agent_token`.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"{{agent_email}}\",\n  \"password\": \"{{user_password}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"message\": \"Login successful\",\n  \"token\": \"<jwt>\",\n  \"role\": \"Agent\",\n  \"expiresIn\": \"1h\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "TC15 - Customer 1 login (password + OTP) returns a JWT",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = () => pm.response.json();",
+                  "const fast = () => pm.expect(pm.response.responseTime, 'response time (ms)').to.be.below(3000);",
+                  "const isJson = () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+                  "",
+                  "const base = pm.variables.get('base_url');",
+                  "const partnerKey = pm.variables.get('partner_key');",
+                  "pm.sendRequest({",
+                  "  url: base + '/user/verify-otp?env=dev',",
+                  "  method: 'POST',",
+                  "  header: { 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify({ identifier: pm.collectionVariables.get('c1_email'), otp: pm.variables.get('default_otp') }) },",
+                  "}, (err, res) => {",
+                  "  pm.test(\"TC15 - Customer 1 login (password + OTP) returns a JWT\", () => {",
+                  "    pm.expect(err, 'follow-up request error').to.be.null;",
+                  "    // step 1 - password accepted, OTP required, no token yet",
+                  "    pm.response.to.have.status(200);",
+                  "    isJson(); fast();",
+                  "    pm.expect(json().otpRequired).to.eql(true);",
+                  "    pm.expect(json().message).to.include('OTP');",
+                  "    pm.expect(json(), 'no token before OTP is verified').to.not.have.property('token');",
+                  "    // step 2 - OTP exchanged for a JWT",
+                  "    pm.expect(res.code).to.eql(200);",
+                  "    const v = res.json();",
+                  "    pm.collectionVariables.set('c1_token', v.token);",
+                  "    pm.expect(v.message).to.eql('Login successful');",
+                  "    pm.expect(v.role).to.eql('Customer');",
+                  "    pm.expect(v.token).to.be.a('string').and.match(/^[\\w-]+\\.[\\w-]+\\.[\\w-]+$/);",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/user/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "user",
+                "login"
+              ]
+            },
+            "description": "Two-step login in one test case. **Step 1** `POST /user/login` must answer `otpRequired: true` with no token. **Step 2** the script calls `POST /user/verify-otp?env=dev` with `default_otp` (the API's dev-only bypass; the real OTP is only emailed/logged) and must receive a JWT. Stored as `c1_token`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{c1_email}}\",\n  \"password\": \"{{user_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/user/login",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "user",
+                    "login"
+                  ]
+                },
+                "description": "Two-step login in one test case. **Step 1** `POST /user/login` must answer `otpRequired: true` with no token. **Step 2** the script calls `POST /user/verify-otp?env=dev` with `default_otp` (the API's dev-only bypass; the real OTP is only emailed/logged) and must receive a JWT. Stored as `c1_token`.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"{{c1_email}}\",\n  \"password\": \"{{user_password}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"message\": \"Login successful\",\n  \"token\": \"<jwt>\",\n  \"role\": \"Customer\",\n  \"expiresIn\": \"1h\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "TC16 - Customer 2 login (password + OTP) returns a JWT",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = () => pm.response.json();",
+                  "const fast = () => pm.expect(pm.response.responseTime, 'response time (ms)').to.be.below(3000);",
+                  "const isJson = () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+                  "",
+                  "const base = pm.variables.get('base_url');",
+                  "const partnerKey = pm.variables.get('partner_key');",
+                  "pm.sendRequest({",
+                  "  url: base + '/user/verify-otp?env=dev',",
+                  "  method: 'POST',",
+                  "  header: { 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify({ identifier: pm.collectionVariables.get('c2_email'), otp: pm.variables.get('default_otp') }) },",
+                  "}, (err, res) => {",
+                  "  pm.test(\"TC16 - Customer 2 login (password + OTP) returns a JWT\", () => {",
+                  "    pm.expect(err, 'follow-up request error').to.be.null;",
+                  "    // step 1 - password accepted, OTP required, no token yet",
+                  "    pm.response.to.have.status(200);",
+                  "    isJson(); fast();",
+                  "    pm.expect(json().otpRequired).to.eql(true);",
+                  "    pm.expect(json().message).to.include('OTP');",
+                  "    pm.expect(json(), 'no token before OTP is verified').to.not.have.property('token');",
+                  "    // step 2 - OTP exchanged for a JWT",
+                  "    pm.expect(res.code).to.eql(200);",
+                  "    const v = res.json();",
+                  "    pm.collectionVariables.set('c2_token', v.token);",
+                  "    pm.expect(v.message).to.eql('Login successful');",
+                  "    pm.expect(v.role).to.eql('Customer');",
+                  "    pm.expect(v.token).to.be.a('string').and.match(/^[\\w-]+\\.[\\w-]+\\.[\\w-]+$/);",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/user/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "user",
+                "login"
+              ]
+            },
+            "description": "Two-step login in one test case. **Step 1** `POST /user/login` must answer `otpRequired: true` with no token. **Step 2** the script calls `POST /user/verify-otp?env=dev` with `default_otp` (the API's dev-only bypass; the real OTP is only emailed/logged) and must receive a JWT. Stored as `c2_token`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{c2_email}}\",\n  \"password\": \"{{user_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/user/login",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "user",
+                    "login"
+                  ]
+                },
+                "description": "Two-step login in one test case. **Step 1** `POST /user/login` must answer `otpRequired: true` with no token. **Step 2** the script calls `POST /user/verify-otp?env=dev` with `default_otp` (the API's dev-only bypass; the real OTP is only emailed/logged) and must receive a JWT. Stored as `c2_token`.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"{{c2_email}}\",\n  \"password\": \"{{user_password}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"message\": \"Login successful\",\n  \"token\": \"<jwt>\",\n  \"role\": \"Customer\",\n  \"expiresIn\": \"1h\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. SYSTEM deposits to Agent",
+      "description": "SYSTEM funds the agent with 5000 Tk. The funding flow has no commission and no min/max, and may only target a regular Agent.",
+      "item": [
+        {
+          "name": "TC17 - SYSTEM deposits 5000 Tk to the Agent",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = () => pm.response.json();",
+                  "const fast = () => pm.expect(pm.response.responseTime, 'response time (ms)').to.be.below(3000);",
+                  "const isJson = () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+                  "",
+                  "pm.test(\"TC17 - SYSTEM deposits 5000 Tk to the Agent\", () => {",
+                  "  pm.response.to.have.status(201);",
+                  "  isJson(); fast();",
+                  "  const b = json();",
+                  "  pm.expect(b.message).to.eql('SYSTEM deposit to Agent successful');",
+                  "  pm.expect(b.trnxId).to.be.a('string').and.not.empty;",
+                  "  pm.expect(b.amount).to.eql(5000);",
+                  "  pm.expect(b.agentBalance, 'agent balance after top-up').to.eql(5000);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{system_token}}"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{partner_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/transaction/deposit",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "transaction",
+                "deposit"
+              ]
+            },
+            "description": "SYSTEM → regular Agent funding flow. The agent starts at 0, so the new balance must be exactly 5000.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from_account\": \"SYSTEM\",\n  \"to_account\": \"{{agent_phone}}\",\n  \"amount\": 5000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "201 Created",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{system_token}}"
+                  },
+                  {
+                    "key": "X-AUTH-SECRET-KEY",
+                    "value": "{{partner_key}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/transaction/deposit",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "transaction",
+                    "deposit"
+                  ]
+                },
+                "description": "SYSTEM → regular Agent funding flow. The agent starts at 0, so the new balance must be exactly 5000.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"from_account\": \"SYSTEM\",\n  \"to_account\": \"{{agent_phone}}\",\n  \"amount\": 5000\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Created",
+              "code": 201,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"message\": \"SYSTEM deposit to Agent successful\",\n  \"trnxId\": \"TXN51AUAWRBZ6\",\n  \"amount\": 5000,\n  \"agentBalance\": 5000\n}"
+            }
+          ]
+        },
+        {
+          "name": "TC18 - SYSTEM deposit to a Customer is rejected (negative)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = () => pm.response.json();",
+                  "const fast = () => pm.expect(pm.response.responseTime, 'response time (ms)').to.be.below(3000);",
+                  "const isJson = () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+                  "",
+                  "pm.test(\"TC18 - SYSTEM deposit to a Customer is rejected (negative)\", () => {",
+                  "  pm.response.to.have.status(400);",
+                  "  isJson(); fast();",
+                  "  pm.expect(json().message).to.include('SYSTEM account can only deposit to a regular Agent');",
+                  "  pm.expect(json()).to.not.have.property('trnxId');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{system_token}}"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{partner_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/transaction/deposit",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "transaction",
+                "deposit"
+              ]
+            },
+            "description": "The SYSTEM account may only fund a regular Agent. Targeting a Customer must return **400**; nothing is booked.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from_account\": \"SYSTEM\",\n  \"to_account\": \"{{c1_phone}}\",\n  \"amount\": 5000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "400 Bad Request",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{system_token}}"
+                  },
+                  {
+                    "key": "X-AUTH-SECRET-KEY",
+                    "value": "{{partner_key}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/transaction/deposit",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "transaction",
+                    "deposit"
+                  ]
+                },
+                "description": "The SYSTEM account may only fund a regular Agent. Targeting a Customer must return **400**; nothing is booked.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"from_account\": \"SYSTEM\",\n  \"to_account\": \"{{c1_phone}}\",\n  \"amount\": 5000\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"message\": \"SYSTEM account can only deposit to a regular Agent account. Customer and Merchant accounts are not allowed.\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. Agent deposits to Customer",
+      "description": "Agent cash-in of 2000 Tk to Customer 1 with the 2.5% agent commission asserted, plus below-minimum and insufficient-balance negatives.",
+      "item": [
+        {
+          "name": "TC19 - Agent deposits 2000 Tk to Customer 1 — assert commission",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = () => pm.response.json();",
+                  "const fast = () => pm.expect(pm.response.responseTime, 'response time (ms)').to.be.below(3000);",
+                  "const isJson = () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+                  "",
+                  "pm.test(\"TC19 - Agent deposits 2000 Tk to Customer 1 — assert commission\", () => {",
+                  "  pm.response.to.have.status(201);",
+                  "  isJson(); fast();",
+                  "  const b = json();",
+                  "  const expectedCommission = 2000 * Number(pm.collectionVariables.get('deposit_commission_rate'));",
+                  "  pm.expect(b.message).to.eql('Deposit successful');",
+                  "  pm.expect(b.trnxId).to.be.a('string').and.not.empty;",
+                  "  pm.expect(b.commission, 'deposit commission = 2.5% of 2000').to.eql(expectedCommission);",
+                  "  pm.expect(b.commission).to.eql(50);",
+                  "  pm.expect(b.currentBalance, 'agent balance = 5000 - 2000 + 50').to.eql(3050);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{agent_token}}"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{partner_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/transaction/deposit",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "transaction",
+                "deposit"
+              ]
+            },
+            "description": "Agent commission = amount × 2.5% = **50 Tk**. Agent net balance = 5000 − 2000 + 50 = **3050**.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from_account\": \"{{agent_phone}}\",\n  \"to_account\": \"{{c1_phone}}\",\n  \"amount\": 2000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "201 Created",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{agent_token}}"
+                  },
+                  {
+                    "key": "X-AUTH-SECRET-KEY",
+                    "value": "{{partner_key}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/transaction/deposit",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "transaction",
+                    "deposit"
+                  ]
+                },
+                "description": "Agent commission = amount × 2.5% = **50 Tk**. Agent net balance = 5000 − 2000 + 50 = **3050**.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"from_account\": \"{{agent_phone}}\",\n  \"to_account\": \"{{c1_phone}}\",\n  \"amount\": 2000\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Created",
+              "code": 201,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"message\": \"Deposit successful\",\n  \"trnxId\": \"TXNTM9JPD7MWD\",\n  \"commission\": 50,\n  \"currentBalance\": 3050\n}"
+            }
+          ]
+        },
+        {
+          "name": "TC20 - Deposit below the 10 Tk minimum is rejected (negative)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = () => pm.response.json();",
+                  "const fast = () => pm.expect(pm.response.responseTime, 'response time (ms)').to.be.below(3000);",
+                  "const isJson = () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+                  "",
+                  "pm.test(\"TC20 - Deposit below the 10 Tk minimum is rejected (negative)\", () => {",
+                  "  pm.response.to.have.status(400);",
+                  "  isJson(); fast();",
+                  "  pm.expect(json().message).to.include('Minimum deposit amount is 10');",
+                  "  pm.expect(json()).to.not.have.property('trnxId');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{agent_token}}"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{partner_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/transaction/deposit",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "transaction",
+                "deposit"
+              ]
+            },
+            "description": "Deposits must be between 10 and 10,000 Tk. 5 Tk must return **400** with the min/max message; nothing is booked.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from_account\": \"{{agent_phone}}\",\n  \"to_account\": \"{{c1_phone}}\",\n  \"amount\": 5\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "400 Bad Request",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{agent_token}}"
+                  },
+                  {
+                    "key": "X-AUTH-SECRET-KEY",
+                    "value": "{{partner_key}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/transaction/deposit",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "transaction",
+                    "deposit"
+                  ]
+                },
+                "description": "Deposits must be between 10 and 10,000 Tk. 5 Tk must return **400** with the min/max message; nothing is booked.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"from_account\": \"{{agent_phone}}\",\n  \"to_account\": \"{{c1_phone}}\",\n  \"amount\": 5\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"message\": \"Minimum deposit amount is 10 tk and maximum deposit amount is 10000 tk\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "TC21 - Deposit larger than the Agent balance returns 208 (negative)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = () => pm.response.json();",
+                  "const fast = () => pm.expect(pm.response.responseTime, 'response time (ms)').to.be.below(3000);",
+                  "const isJson = () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+                  "",
+                  "pm.test(\"TC21 - Deposit larger than the Agent balance returns 208 (negative)\", () => {",
+                  "  pm.response.to.have.status(208);",
+                  "  isJson(); fast();",
+                  "  pm.expect(json().message).to.eql('Insufficient balance');",
+                  "  pm.expect(json().currentBalance, 'balance is untouched').to.eql(3050);",
+                  "  pm.expect(json()).to.not.have.property('trnxId');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{agent_token}}"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{partner_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/transaction/deposit",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "transaction",
+                "deposit"
+              ]
+            },
+            "description": "Agent holds 3050 Tk, tries 9000 Tk (inside the 10–10,000 range). Expected **208** `Insufficient balance` reporting the unchanged balance.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from_account\": \"{{agent_phone}}\",\n  \"to_account\": \"{{c1_phone}}\",\n  \"amount\": 9000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "208 Already Reported",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{agent_token}}"
+                  },
+                  {
+                    "key": "X-AUTH-SECRET-KEY",
+                    "value": "{{partner_key}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/transaction/deposit",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "transaction",
+                    "deposit"
+                  ]
+                },
+                "description": "Agent holds 3050 Tk, tries 9000 Tk (inside the 10–10,000 range). Expected **208** `Insufficient balance` reporting the unchanged balance.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"from_account\": \"{{agent_phone}}\",\n  \"to_account\": \"{{c1_phone}}\",\n  \"amount\": 9000\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Already Reported",
+              "code": 208,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"message\": \"Insufficient balance\",\n  \"currentBalance\": 3050\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6. Send money",
+      "description": "Customer 1 sends 1000 Tk to Customer 2 with the flat service fee asserted, plus wrong-recipient and insufficient-balance negatives.",
+      "item": [
+        {
+          "name": "TC22 - Customer 1 sends 1000 Tk to Customer 2 — assert service fee",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = () => pm.response.json();",
+                  "const fast = () => pm.expect(pm.response.responseTime, 'response time (ms)').to.be.below(3000);",
+                  "const isJson = () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+                  "",
+                  "pm.test(\"TC22 - Customer 1 sends 1000 Tk to Customer 2 — assert service fee\", () => {",
+                  "  pm.response.to.have.status(201);",
+                  "  isJson(); fast();",
+                  "  const b = json();",
+                  "  pm.expect(b.message).to.eql('Send money successful');",
+                  "  pm.expect(b.trnxId).to.be.a('string').and.not.empty;",
+                  "  pm.expect(b.fee, 'send money service fee').to.eql(Number(pm.collectionVariables.get('sendmoney_fee')));",
+                  "  pm.expect(b.fee).to.eql(5);",
+                  "  pm.expect(b.currentBalance, 'sender balance = 2000 - 1000 - 5').to.eql(995);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{c1_token}}"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{partner_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/transaction/sendmoney",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "transaction",
+                "sendmoney"
+              ]
+            },
+            "description": "Send Money carries a flat **5 Tk** service fee (credited to SYSTEM). Sender balance = 2000 − 1000 − 5 = **995**.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from_account\": \"{{c1_phone}}\",\n  \"to_account\": \"{{c2_phone}}\",\n  \"amount\": 1000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "201 Created",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{c1_token}}"
+                  },
+                  {
+                    "key": "X-AUTH-SECRET-KEY",
+                    "value": "{{partner_key}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/transaction/sendmoney",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "transaction",
+                    "sendmoney"
+                  ]
+                },
+                "description": "Send Money carries a flat **5 Tk** service fee (credited to SYSTEM). Sender balance = 2000 − 1000 − 5 = **995**.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"from_account\": \"{{c1_phone}}\",\n  \"to_account\": \"{{c2_phone}}\",\n  \"amount\": 1000\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Created",
+              "code": 201,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"message\": \"Send money successful\",\n  \"trnxId\": \"TXN3B6ENDPKKC\",\n  \"fee\": 5,\n  \"currentBalance\": 995\n}"
+            }
+          ]
+        },
+        {
+          "name": "TC23 - Send money to a Merchant is rejected (negative)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = () => pm.response.json();",
+                  "const fast = () => pm.expect(pm.response.responseTime, 'response time (ms)').to.be.below(3000);",
+                  "const isJson = () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+                  "",
+                  "pm.test(\"TC23 - Send money to a Merchant is rejected (negative)\", () => {",
+                  "  pm.response.to.have.status(400);",
+                  "  isJson(); fast();",
+                  "  pm.expect(json().message).to.eql('Send money is only allowed between two Customer accounts');",
+                  "  pm.expect(json()).to.not.have.property('trnxId');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{c1_token}}"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{partner_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/transaction/sendmoney",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "transaction",
+                "sendmoney"
+              ]
+            },
+            "description": "Send Money is Customer → Customer only. Expected **400**; no money moves.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from_account\": \"{{c1_phone}}\",\n  \"to_account\": \"{{merchant_phone}}\",\n  \"amount\": 100\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "400 Bad Request",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{c1_token}}"
+                  },
+                  {
+                    "key": "X-AUTH-SECRET-KEY",
+                    "value": "{{partner_key}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/transaction/sendmoney",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "transaction",
+                    "sendmoney"
+                  ]
+                },
+                "description": "Send Money is Customer → Customer only. Expected **400**; no money moves.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"from_account\": \"{{c1_phone}}\",\n  \"to_account\": \"{{merchant_phone}}\",\n  \"amount\": 100\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"message\": \"Send money is only allowed between two Customer accounts\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "TC24 - Send money above the sender balance returns 208 (negative)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = () => pm.response.json();",
+                  "const fast = () => pm.expect(pm.response.responseTime, 'response time (ms)').to.be.below(3000);",
+                  "const isJson = () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+                  "",
+                  "pm.test(\"TC24 - Send money above the sender balance returns 208 (negative)\", () => {",
+                  "  pm.response.to.have.status(208);",
+                  "  isJson(); fast();",
+                  "  pm.expect(json().message).to.eql('Insufficient balance');",
+                  "  pm.expect(json().currentBalance, 'balance is untouched').to.eql(995);",
+                  "  pm.expect(json()).to.not.have.property('trnxId');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{c1_token}}"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{partner_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/transaction/sendmoney",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "transaction",
+                "sendmoney"
+              ]
+            },
+            "description": "Customer 1 holds 995 Tk and tries to send 2000 Tk (within the daily limit, so the balance rule is what rejects it). Expected **208** `Insufficient balance`; balance unchanged.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from_account\": \"{{c1_phone}}\",\n  \"to_account\": \"{{c2_phone}}\",\n  \"amount\": 2000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "208 Already Reported",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{c1_token}}"
+                  },
+                  {
+                    "key": "X-AUTH-SECRET-KEY",
+                    "value": "{{partner_key}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/transaction/sendmoney",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "transaction",
+                    "sendmoney"
+                  ]
+                },
+                "description": "Customer 1 holds 995 Tk and tries to send 2000 Tk (within the daily limit, so the balance rule is what rejects it). Expected **208** `Insufficient balance`; balance unchanged.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"from_account\": \"{{c1_phone}}\",\n  \"to_account\": \"{{c2_phone}}\",\n  \"amount\": 2000\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Already Reported",
+              "code": 208,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"message\": \"Insufficient balance\",\n  \"currentBalance\": 995\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "7. Cash-out",
+      "description": "Customer 2 cashes out 500 Tk via the Agent with the service fee asserted, plus wrong-recipient and below-minimum negatives.",
+      "item": [
+        {
+          "name": "TC25 - Customer 2 cashes out 500 Tk via the Agent — assert service fee",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = () => pm.response.json();",
+                  "const fast = () => pm.expect(pm.response.responseTime, 'response time (ms)').to.be.below(3000);",
+                  "const isJson = () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+                  "",
+                  "const base = pm.variables.get('base_url');",
+                  "const partnerKey = pm.variables.get('partner_key');",
+                  "pm.sendRequest({",
+                  "  url: base + '/transaction/balance/' + pm.collectionVariables.get('agent_phone'),",
+                  "  method: 'GET',",
+                  "  header: { Authorization: 'Bearer ' + pm.collectionVariables.get('admin_token'), 'X-AUTH-SECRET-KEY': partnerKey },",
+                  "}, (err, res) => {",
+                  "  pm.test(\"TC25 - Customer 2 cashes out 500 Tk via the Agent — assert service fee\", () => {",
+                  "    pm.expect(err, 'follow-up request error').to.be.null;",
+                  "    pm.response.to.have.status(201);",
+                  "    isJson(); fast();",
+                  "    const b = json();",
+                  "    const expectedFee = Math.max(500 * Number(pm.collectionVariables.get('withdraw_fee_rate')), Number(pm.collectionVariables.get('withdraw_min_fee')));",
+                  "    pm.expect(b.message).to.eql('Withdraw successful');",
+                  "    pm.expect(b.trnxId).to.be.a('string').and.not.empty;",
+                  "    pm.expect(b.fee, 'cash-out fee = max(1%, 5)').to.eql(expectedFee);",
+                  "    pm.expect(b.fee).to.eql(5);",
+                  "    pm.expect(b.currentBalance, 'customer 2 balance = 1000 - 500 - 5').to.eql(495);",
+                  "    pm.expect(res.code).to.eql(200);",
+                  "    pm.expect(res.json().balance, 'agent = 3050 + 500 + 2.5% commission').to.eql(3562.5);",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{c2_token}}"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{partner_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/transaction/withdraw",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "transaction",
+                "withdraw"
+              ]
+            },
+            "description": "Withdraw fee = max(1% of amount, 5 Tk) = **5 Tk** for 500 Tk. Customer 2 balance = 1000 − 500 − 5 = **495**. A follow-up balance lookup confirms the Agent earned its 2.5% commission: 3050 + 500 + 12.5 = **3562.5**.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from_account\": \"{{c2_phone}}\",\n  \"to_account\": \"{{agent_phone}}\",\n  \"amount\": 500\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{c2_token}}"
+                  },
+                  {
+                    "key": "X-AUTH-SECRET-KEY",
+                    "value": "{{partner_key}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/transaction/withdraw",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "transaction",
+                    "withdraw"
+                  ]
+                },
+                "description": "Withdraw fee = max(1% of amount, 5 Tk) = **5 Tk** for 500 Tk. Customer 2 balance = 1000 − 500 − 5 = **495**. A follow-up balance lookup confirms the Agent earned its 2.5% commission: 3050 + 500 + 12.5 = **3562.5**.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"from_account\": \"{{c2_phone}}\",\n  \"to_account\": \"{{agent_phone}}\",\n  \"amount\": 500\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"message\": \"User balance\",\n  \"balance\": 3562.5\n}"
+            }
+          ]
+        },
+        {
+          "name": "TC26 - Cash-out to a non-Agent account is rejected (negative)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = () => pm.response.json();",
+                  "const fast = () => pm.expect(pm.response.responseTime, 'response time (ms)').to.be.below(3000);",
+                  "const isJson = () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+                  "",
+                  "pm.test(\"TC26 - Cash-out to a non-Agent account is rejected (negative)\", () => {",
+                  "  pm.response.to.have.status(400);",
+                  "  isJson(); fast();",
+                  "  pm.expect(json().message).to.eql('To Account is not agent account');",
+                  "  pm.expect(json()).to.not.have.property('trnxId');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{c2_token}}"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{partner_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/transaction/withdraw",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "transaction",
+                "withdraw"
+              ]
+            },
+            "description": "Cash-out must go through an Agent. Pointing `to_account` at Customer 1 must return **400** `To Account is not agent account`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from_account\": \"{{c2_phone}}\",\n  \"to_account\": \"{{c1_phone}}\",\n  \"amount\": 100\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "400 Bad Request",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{c2_token}}"
+                  },
+                  {
+                    "key": "X-AUTH-SECRET-KEY",
+                    "value": "{{partner_key}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/transaction/withdraw",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "transaction",
+                    "withdraw"
+                  ]
+                },
+                "description": "Cash-out must go through an Agent. Pointing `to_account` at Customer 1 must return **400** `To Account is not agent account`.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"from_account\": \"{{c2_phone}}\",\n  \"to_account\": \"{{c1_phone}}\",\n  \"amount\": 100\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"message\": \"To Account is not agent account\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "TC27 - Cash-out below the 10 Tk minimum is rejected (negative)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = () => pm.response.json();",
+                  "const fast = () => pm.expect(pm.response.responseTime, 'response time (ms)').to.be.below(3000);",
+                  "const isJson = () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+                  "",
+                  "pm.test(\"TC27 - Cash-out below the 10 Tk minimum is rejected (negative)\", () => {",
+                  "  pm.response.to.have.status(400);",
+                  "  isJson(); fast();",
+                  "  pm.expect(json().message).to.include('Minimum withdraw amount is 10');",
+                  "  pm.expect(json().currentBalance, 'balance is untouched').to.eql(495);",
+                  "  pm.expect(json()).to.not.have.property('trnxId');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{c2_token}}"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{partner_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/transaction/withdraw",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "transaction",
+                "withdraw"
+              ]
+            },
+            "description": "Minimum withdraw amount is 10 Tk. 5 Tk must return **400**; Customer 2's balance (495) is reported unchanged.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from_account\": \"{{c2_phone}}\",\n  \"to_account\": \"{{agent_phone}}\",\n  \"amount\": 5\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "400 Bad Request",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{c2_token}}"
+                  },
+                  {
+                    "key": "X-AUTH-SECRET-KEY",
+                    "value": "{{partner_key}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/transaction/withdraw",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "transaction",
+                    "withdraw"
+                  ]
+                },
+                "description": "Minimum withdraw amount is 10 Tk. 5 Tk must return **400**; Customer 2's balance (495) is reported unchanged.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"from_account\": \"{{c2_phone}}\",\n  \"to_account\": \"{{agent_phone}}\",\n  \"amount\": 5\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"message\": \"Minimum withdraw amount is 10 tk\",\n  \"currentBalance\": 495\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "8. Payment",
+      "description": "Customer 2 pays 400 Tk to the Merchant, plus wrong-recipient and insufficient-balance negatives.",
+      "item": [
+        {
+          "name": "TC28 - Customer 2 pays 400 Tk to the Merchant",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = () => pm.response.json();",
+                  "const fast = () => pm.expect(pm.response.responseTime, 'response time (ms)').to.be.below(3000);",
+                  "const isJson = () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+                  "",
+                  "const base = pm.variables.get('base_url');",
+                  "const partnerKey = pm.variables.get('partner_key');",
+                  "pm.sendRequest({",
+                  "  url: base + '/user/search/phonenumber/' + pm.collectionVariables.get('merchant_phone'),",
+                  "  method: 'GET',",
+                  "  header: { Authorization: 'Bearer ' + pm.collectionVariables.get('admin_token') },",
+                  "}, (err, res) => {",
+                  "  pm.test(\"TC28 - Customer 2 pays 400 Tk to the Merchant\", () => {",
+                  "    pm.expect(err, 'follow-up request error').to.be.null;",
+                  "    pm.response.to.have.status(201);",
+                  "    isJson(); fast();",
+                  "    const b = json();",
+                  "    const expectedFee = Math.max(400 * Number(pm.collectionVariables.get('payment_fee_rate')), Number(pm.collectionVariables.get('payment_min_fee')));",
+                  "    pm.expect(b.message).to.eql('Payment successful');",
+                  "    pm.expect(b.trnxId).to.be.a('string').and.not.empty;",
+                  "    pm.expect(b.fee, 'payment fee = max(1%, 5)').to.eql(expectedFee);",
+                  "    pm.expect(b.fee).to.eql(5);",
+                  "    pm.expect(b.currentBalance, 'customer 2 balance = 495 - 400 - 5').to.eql(90);",
+                  "    pm.expect(b, 'no discount code was sent').to.not.have.property('discountedTotal');",
+                  "    pm.expect(res.code).to.eql(200);",
+                  "    pm.expect(res.json().user.balance, 'merchant received at least the paid amount').to.be.at.least(400);",
+                  "  });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{c2_token}}"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{partner_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/transaction/payment",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "transaction",
+                "payment"
+              ]
+            },
+            "description": "Payment fee = max(1% of 400, 5 Tk) = **5 Tk**. Customer 2 balance = 495 − 400 − 5 = **90**. A follow-up lookup confirms the Merchant received the money (at least 400 Tk).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from_account\": \"{{c2_phone}}\",\n  \"to_account\": \"{{merchant_phone}}\",\n  \"amount\": 400\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{c2_token}}"
+                  },
+                  {
+                    "key": "X-AUTH-SECRET-KEY",
+                    "value": "{{partner_key}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/transaction/payment",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "transaction",
+                    "payment"
+                  ]
+                },
+                "description": "Payment fee = max(1% of 400, 5 Tk) = **5 Tk**. Customer 2 balance = 495 − 400 − 5 = **90**. A follow-up lookup confirms the Merchant received the money (at least 400 Tk).",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"from_account\": \"{{c2_phone}}\",\n  \"to_account\": \"{{merchant_phone}}\",\n  \"amount\": 400\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"message\": \"User found\",\n  \"user\": {\n    \"id\": 80,\n    \"name\": \"SDET Merchant\",\n    \"email\": \"sdet.merchant.3615900946@gmail.com\",\n    \"password\": \"<password-hash-redacted>\",\n    \"phone_number\": \"01733718020\",\n    \"nid\": \"9014635625\",\n    \"role\": \"Merchant\",\n    \"status\": \"active\",\n    \"otp\": null,\n    \"otp_expire\": null,\n    \"reset_token\": null,\n    \"reset_token_expires\": null,\n    \"photo\": null,\n    \"createdAt\": \"2026-11-02T16:15:59.000Z\",\n    \"updatedAt\": \"2026-11-02T16:15:59.000Z\",\n    \"balance\": 400\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "TC29 - Payment to a non-Merchant account is rejected (negative)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = () => pm.response.json();",
+                  "const fast = () => pm.expect(pm.response.responseTime, 'response time (ms)').to.be.below(3000);",
+                  "const isJson = () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+                  "",
+                  "pm.test(\"TC29 - Payment to a non-Merchant account is rejected (negative)\", () => {",
+                  "  pm.response.to.have.status(400);",
+                  "  isJson(); fast();",
+                  "  pm.expect(json().message).to.eql('From A/C should be customer or agent and To A/C should be merchant type');",
+                  "  pm.expect(json()).to.not.have.property('trnxId');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{c2_token}}"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{partner_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/transaction/payment",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "transaction",
+                "payment"
+              ]
+            },
+            "description": "Payments must go to a Merchant. Paying Customer 1 must return **400**; no money moves.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from_account\": \"{{c2_phone}}\",\n  \"to_account\": \"{{c1_phone}}\",\n  \"amount\": 100\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "400 Bad Request",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{c2_token}}"
+                  },
+                  {
+                    "key": "X-AUTH-SECRET-KEY",
+                    "value": "{{partner_key}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/transaction/payment",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "transaction",
+                    "payment"
+                  ]
+                },
+                "description": "Payments must go to a Merchant. Paying Customer 1 must return **400**; no money moves.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"from_account\": \"{{c2_phone}}\",\n  \"to_account\": \"{{c1_phone}}\",\n  \"amount\": 100\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"message\": \"From A/C should be customer or agent and To A/C should be merchant type\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "TC30 - Payment above the payer balance returns 208 (negative)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = () => pm.response.json();",
+                  "const fast = () => pm.expect(pm.response.responseTime, 'response time (ms)').to.be.below(3000);",
+                  "const isJson = () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+                  "",
+                  "pm.test(\"TC30 - Payment above the payer balance returns 208 (negative)\", () => {",
+                  "  pm.response.to.have.status(208);",
+                  "  isJson(); fast();",
+                  "  pm.expect(json().message).to.eql('Insufficient balance');",
+                  "  pm.expect(json().currentBalance, 'balance is untouched').to.eql(90);",
+                  "  pm.expect(json()).to.not.have.property('trnxId');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{c2_token}}"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{partner_key}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/transaction/payment",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "transaction",
+                "payment"
+              ]
+            },
+            "description": "Customer 2 holds 90 Tk and tries to pay 500 Tk (within the daily limit, so the balance rule rejects it). Expected **208** `Insufficient balance`; balance unchanged.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from_account\": \"{{c2_phone}}\",\n  \"to_account\": \"{{merchant_phone}}\",\n  \"amount\": 500\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "208 Already Reported",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{c2_token}}"
+                  },
+                  {
+                    "key": "X-AUTH-SECRET-KEY",
+                    "value": "{{partner_key}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/transaction/payment",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "transaction",
+                    "payment"
+                  ]
+                },
+                "description": "Customer 2 holds 90 Tk and tries to pay 500 Tk (within the daily limit, so the balance rule rejects it). Expected **208** `Insufficient balance`; balance unchanged.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"from_account\": \"{{c2_phone}}\",\n  \"to_account\": \"{{merchant_phone}}\",\n  \"amount\": 500\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Already Reported",
+              "code": 208,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"message\": \"Insufficient balance\",\n  \"currentBalance\": 90\n}"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:5000"
+    },
+    {
+      "key": "partner_key",
+      "value": "ROADTOSDET"
+    },
+    {
+      "key": "default_otp",
+      "value": "0000"
+    },
+    {
+      "key": "admin_email",
+      "value": "admin@dmoney.com"
+    },
+    {
+      "key": "admin_password",
+      "value": "1234"
+    },
+    {
+      "key": "system_email",
+      "value": "system@dmoney.com"
+    },
+    {
+      "key": "system_password",
+      "value": "1234"
+    },
+    {
+      "key": "user_password",
+      "value": "1234"
+    },
+    {
+      "key": "deposit_commission_rate",
+      "value": "0.025"
+    },
+    {
+      "key": "sendmoney_fee",
+      "value": "5"
+    },
+    {
+      "key": "withdraw_fee_rate",
+      "value": "0.01"
+    },
+    {
+      "key": "withdraw_min_fee",
+      "value": "5"
+    },
+    {
+      "key": "payment_fee_rate",
+      "value": "0.01"
+    },
+    {
+      "key": "payment_min_fee",
+      "value": "5"
+    }
+  ]
+}
